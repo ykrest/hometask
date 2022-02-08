@@ -50,7 +50,8 @@ resource "aws_s3_bucket" "carbyne911_s3_bucket" {
   bucket = "my_carbyne_bucket"
   acl    = "private"
 }
-
+# ======================== everything after this line was my attempt to introduce environments =====
+  
 data "aws_availability_zones" "working" {}
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
