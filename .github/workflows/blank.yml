@@ -1,0 +1,66 @@
+name: Fast Provision + HAProxy
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        type: choice
+        description: Select environment
+        options:
+        - staging
+        - staging2
+        - production
+      tags:
+        type: string
+        description: Tags to provision (comma separated)
+      test:
+        type: boolean
+        description: test
+
+jobs:
+  Run-Tests:
+    name: Provision on ${{ github.event.inputs.env }} ${{ matrix.application }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        application: [api, app, se, sync, webhooks]
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Create ssh key
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$SSH_PRIVATE_KEY" > ../private.key
+          sudo chmod 600 ../private.key
+          echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{secrets.SSH_DEPLOYMENT_KEY}}
+          SSH_KNOWN_HOSTS: ${{secrets.SSH_KNOWN_HOSTS}}
+
+      - name: Branch name
+        run: echo running on branch ${GITHUB_REF##*/}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1 # More information on this action can be found below in the 'AWS Credentials' section
+        with:
+          role-to-assume: arn:aws:iam::451533041687:role/GithubActionRule-Ansible
+          aws-region: eu-west-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Provision to ${{ github.event.inputs.env }} ${{ matrix.application }}
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: rule-ansible
+          IMAGE_TAG: latest      
+        run: |
+          cp .env.docker .env && docker-compose -f docker-ansible.yml run -u vagrant ansible-prebuilt ./provision ${{ github.event.inputs.env }} ${GITHUB_REF#refs/heads/} ${{ matrix.application }} ${{ github.event.inputs.tags }}
+          docker-compose -f docker-ansible.yml run -u vagrant ansible-prebuilt ./provision ${{ github.event.inputs.env }} ${GITHUB_REF#refs/heads/} all haproxy
